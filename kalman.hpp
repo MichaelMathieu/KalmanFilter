@@ -2,6 +2,7 @@
 #define __KALMAN_FILTER_HPP_190213__
 
 #include<opencv/cv.h>
+#include<cstdlib>
 
 // x_k = f(x_{k-1},u_k,w_{k-1})
 //  x : state
@@ -19,16 +20,9 @@ protected:
   matr cov;
   real covw, covv; // TODO: these could be cov matrices
 public:
-  inline KalmanFilter(int nStateParams, real covw, real covv)
-    :x(nStateParams, 1, (real)0.0f),
-     cov(matr::eye(nStateParams, nStateParams)),
-     covw(covw), covv(covv) {};
-  inline KalmanFilter(const  KalmanFilter & src)
-    :x() {src.x.copyTo(x);};
-  inline KalmanFilter & operator=(const KalmanFilter & src) const {
-    src.x.copyTo(x);
-    return *this;
-  };
+  inline KalmanFilter(int nStateParams, real covw, real covv);
+  inline KalmanFilter(const  KalmanFilter & src);
+  inline KalmanFilter & operator=(const KalmanFilter & src);
   virtual ~KalmanFilter() {};
 protected:
   inline int nStateParams() const {
@@ -54,11 +48,38 @@ public:
   matr getW_perturbation(const void* p = NULL) const;
   matr getH_perturbation(const void* p = NULL) const;
   matr getV_perturbation(const void* p = NULL) const;
+  bool testDerivatives(const void* p = NULL) const;
 public:
   void update(const matr & u, const matr & y, const void* p = NULL);
   inline const matr & getX() const { return x; };
   inline const matr & getCov() const { return cov; };
 };
+
+template<typename real>
+KalmanFilter<real>::KalmanFilter(int nStateParams, real covw, real covv)
+  :x(nStateParams, 1, (real)0.0f),
+   cov(matr::eye(nStateParams, nStateParams)),
+   covw(covw), covv(covv) {
+}
+
+template<typename real>
+KalmanFilter<real>::KalmanFilter(const KalmanFilter<real> & src)
+  :x(), cov(), covw(src.covw), covv(src.covv) {
+  src.x.copyTo(x);
+  src.cov.copyTo(cov);
+}
+
+template<typename real>
+KalmanFilter<real> & KalmanFilter<real>::operator=(const KalmanFilter<real> & src) {
+  if (&src != *this) {
+    src.x.copyTo(x);
+    src.cov.copyTo(cov);
+    covv = src.covv;
+    covw = src.covw;
+  }
+  return *this;
+};
+
 
 template<typename real>
 typename KalmanFilter<real>::matr KalmanFilter<real>::getA_perturbation(const void* p) const {
@@ -135,6 +156,49 @@ typename KalmanFilter<real>::matr KalmanFilter<real>::getV_perturbation(const vo
     for (int i = 0; i < nObsParams(); ++i)
       out(i, j) = (xp(i) - xm(i)) / (((real)2.f)*eps);
   }
+  return out;
+}
+
+template<typename real>
+bool KalmanFilter<real>::testDerivatives(const void* p) const {
+  matr oldx;
+  x.copyTo(oldx);
+  double m, eps = 1e-3;
+  matr diff;
+  bool out = true;
+  for (int i = 0; i < 10; ++i) {
+    for (int j = 0; j < nStateParams(); ++j)
+      x(j) = (float)rand()/(0.25*RAND_MAX)-2.f;
+    diff = abs(getA(p) - getA_perturbation(p));
+    minMaxLoc(diff, NULL, &m);
+    if (m > eps) {
+      std::cerr << "KalmanFilter::testDerivatives: getA failed" << std::endl;
+      out = false;
+      break;
+    }
+    diff = abs(getW(p) - getW_perturbation(p));
+    minMaxLoc(diff, NULL, &m);
+    if (m > eps) {
+      std::cerr << "KalmanFilter::testDerivatives: getW failed" << std::endl;
+      out = false;
+      break;
+    }
+    diff = abs(getH(p) - getH_perturbation(p));
+    minMaxLoc(diff, NULL, &m);
+    if (m > eps) {
+      std::cerr << "KalmanFilter::testDerivatives: getH failed" << std::endl;
+      out = false;
+      break;
+    }
+    diff = abs(getV(p) - getV_perturbation(p));
+    minMaxLoc(diff, NULL, &m);
+    if (m > eps) {
+      std::cerr << "KalmanFilter::testDerivatives: getV failed" << std::endl;
+      out = false;
+      break;
+    }
+  }
+  oldx.copyTo(x);
   return out;
 }
 

@@ -30,6 +30,7 @@ TestKalman::matr TestKalman::h(const matr & v, const void*) const {
 
 int main () {
   TestKalman test;
+  cout << (int)test.testDerivatives() << endl;
   cout << test.getX() << " " << test.getCov() << endl;
   test.update(TestKalman::matr(1,1,0.5f), TestKalman::matr(1,1,0.8f*0.7f));
   cout << test.getX() << " " << test.getCov() << endl;
