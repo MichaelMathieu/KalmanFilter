@@ -15,7 +15,8 @@ template<typename real>
 class KalmanFilter {
 public:
   typedef cv::Mat_<real> matr;
-protected:
+  //protected:
+public:
   mutable matr x;
   matr cov;
   real covw, covv; // TODO: these could be cov matrices
@@ -58,7 +59,8 @@ public:
 template<typename real>
 KalmanFilter<real>::KalmanFilter(int nStateParams, real covw, real covv)
   :x(nStateParams, 1, (real)0.0f),
-   cov(matr::eye(nStateParams, nStateParams)),
+   cov(0.1*matr::eye(nStateParams, nStateParams)),
+   //cov(0.1*matr::ones(nStateParams, nStateParams)),
    covw(covw), covv(covv) {
 }
 
@@ -83,7 +85,7 @@ KalmanFilter<real> & KalmanFilter<real>::operator=(const KalmanFilter<real> & sr
 
 template<typename real>
 typename KalmanFilter<real>::matr KalmanFilter<real>::getA_perturbation(const void* p) const {
-  real eps = 1e-3;
+  real eps = 1e-2;
   matr out(nStateParams(), nStateParams());
   matr xm, xp;
   matr matrnull1(nCommandParams(), 1, (real)0.f);
@@ -103,7 +105,7 @@ typename KalmanFilter<real>::matr KalmanFilter<real>::getA_perturbation(const vo
 
 template<typename real>
 typename KalmanFilter<real>::matr KalmanFilter<real>::getW_perturbation(const void* p) const {
-  real eps = 1e-3;
+  real eps = 1e-2;
   matr out(nStateParams(), nNoise1Params());
   matr noisep(nNoise1Params(), 1, 0.0f), noisem(nNoise1Params(), 1, 0.0f);
   matr xm, xp;
@@ -142,15 +144,15 @@ typename KalmanFilter<real>::matr KalmanFilter<real>::getH_perturbation(const vo
 
 template<typename real>
 typename KalmanFilter<real>::matr KalmanFilter<real>::getV_perturbation(const void* p) const {
-  real eps = 1e-3;
+  real eps = 1e-1; // TODO: compare to value function to avoid big eps
   matr out(nObsParams(), nNoise2Params());
   matr noisep(nNoise2Params(), 1, 0.0f), noisem(nNoise2Params(), 1, 0.0f);
   matr xm, xp;
-  for (int j = 0; j < nNoise1Params(); ++j) {
+  for (int j = 0; j < nNoise2Params(); ++j) {
     noisem(j) -= eps;
     noisep(j) += eps;
     xm = h(noisem, p);
-    xp = h( noisep, p);
+    xp = h(noisep, p);
     noisem(j) += eps;
     noisep(j) -= eps;
     for (int i = 0; i < nObsParams(); ++i)
@@ -163,36 +165,48 @@ template<typename real>
 bool KalmanFilter<real>::testDerivatives(const void* p) const {
   matr oldx;
   x.copyTo(oldx);
-  double m, eps = 1e-3;
-  matr diff;
+  double mref, m, eps = 5e-3;
+  matr diff, M;
   bool out = true;
   for (int i = 0; i < 10; ++i) {
     for (int j = 0; j < nStateParams(); ++j)
       x(j) = (float)rand()/(0.25*RAND_MAX)-2.f;
-    diff = abs(getA(p) - getA_perturbation(p));
+    M = getA(p);
+    diff = abs(M - getA_perturbation(p));
     minMaxLoc(diff, NULL, &m);
-    if (m > eps) {
+    minMaxLoc(M, NULL, &mref);
+    mref = abs(mref);
+    if (((mref < eps) && (m > 2*eps)) || (m/mref > eps)) {
       std::cerr << "KalmanFilter::testDerivatives: getA failed" << std::endl;
       out = false;
       break;
     }
-    diff = abs(getW(p) - getW_perturbation(p));
+    M = getW(p);
+    diff = abs(M - getW_perturbation(p));
     minMaxLoc(diff, NULL, &m);
-    if (m > eps) {
+    minMaxLoc(M, NULL, &mref);
+    mref = abs(mref);
+    if (((mref < eps) && (m > 2*eps)) || (m/mref > eps)) {
       std::cerr << "KalmanFilter::testDerivatives: getW failed" << std::endl;
       out = false;
       break;
     }
-    diff = abs(getH(p) - getH_perturbation(p));
+    M = getH(p);
+    diff = abs(M - getH_perturbation(p));
     minMaxLoc(diff, NULL, &m);
-    if (m > eps) {
+    minMaxLoc(M, NULL, &mref);
+    mref = abs(mref);
+    if (((mref < eps) && (m > 2*eps)) || (m/mref > eps)) {
       std::cerr << "KalmanFilter::testDerivatives: getH failed" << std::endl;
       out = false;
       break;
     }
-    diff = abs(getV(p) - getV_perturbation(p));
+    M = getV(p);
+    diff = abs(M - getV_perturbation(p));
     minMaxLoc(diff, NULL, &m);
-    if (m > eps) {
+    minMaxLoc(M, NULL, &mref);
+    mref = abs(mref);
+    if (((mref < eps) && (m > 2*eps)) || (m/mref > eps)) {
       std::cerr << "KalmanFilter::testDerivatives: getV failed" << std::endl;
       out = false;
       break;
@@ -202,20 +216,31 @@ bool KalmanFilter<real>::testDerivatives(const void* p) const {
   return out;
 }
 
+using namespace std;
 template<typename real>
 void KalmanFilter<real>::update(const matr & u, const matr & y, const void* p) {
+  //cout << cov << endl;
   matr A = getA(p);
+  //cout << "\n\nA\n\n" << A << endl;
   matr W = getW(p);
+  //cout << "\n\nW\n\n" << W << endl;
   // 1) prediction
   x = f(u, matr(nNoise1Params(), 1, (real)0.0f), p);
+  //cout << "\n\nx\n\n" << x << endl;
   cov = A*cov*A.t() + covw*W*W.t();
+  //cout << "\n\ncov\n\n" << cov << endl;
   // 2) update
   matr H = getH(p);
+  //cout << "\n\nH\n\n" << H << endl;
   matr V = getV(p);
-  // TODO: come products are redundants, and do not use inv()
+  //cout << "\n\nV\n\n" << V << endl;
+  // TODO: some products are redundants, and do not use inv()
   matr K = cov * H.t() * (H * cov * H.t() + covv * V * V.t()).inv();
+  //cout << "\n\nK\n\n" << K << endl << endl;
   x += K * (y - h(matr(nNoise2Params(), 1, (real)0.0f), p));
+  //cout << "\n\nx2\n\n" << x << endl;
   cov = (matr::eye(nStateParams(), nStateParams()) - K * H) * cov;
+  //cout << "\n\ncov\n\n" << cov << endl;
 }  
 
 #endif

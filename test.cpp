@@ -5,7 +5,7 @@ using namespace std;
 class TestKalman : public KalmanFilter<float> {
 public:
   TestKalman()
-    :KalmanFilter<float>(1, 0.1f, 0.2f) {
+    :KalmanFilter<float>(1, 0.5f, 0.5f) {
   };
   virtual ~TestKalman() {};
 protected:
